@@ -359,7 +359,7 @@ static size_t output_memory_block(const unsigned char *ptr, int n, size_t width,
     return len;
 }
 
-size_t __v_lprintf(const char *format, va_list arg_ptr)
+int __v_lprintf(const char *format, va_list arg_ptr)
 {
     size_t len = 0, l;
     signed int n;
@@ -564,9 +564,9 @@ print_num:
     return len;
 }
 
-size_t lprintf(const char *format, ...)
+int lprintf(const char *format, ...)
 {
-    size_t n;
+    int n;
     va_list arg_ptr;
 
     va_start(arg_ptr, format);

@@ -1,2 +1,5 @@
 *.o
 *.exe
+tmp/
+*.log
+datalink
