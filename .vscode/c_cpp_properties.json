@@ -1,0 +1,25 @@
+{
+    "configurations": [
+        {
+            "name": "Windows-MinGW",
+            "compilerPath": "D:/mingw64/bin/gcc.exe",
+            "intelliSenseMode": "windows-gcc-x64",
+            "cStandard": "c11",
+            "includePath": [
+                "${workspaceFolder}"
+            ],
+            "defines": []
+        },
+        {
+            "name": "WSL-Remote",
+            "compilerPath": "/usr/bin/gcc",
+            "intelliSenseMode": "linux-gcc-x64",
+            "cStandard": "c11",
+            "includePath": [
+                "${workspaceFolder}"
+            ],
+            "defines": []
+        }
+    ],
+    "version": 4
+}
