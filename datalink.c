@@ -7,6 +7,7 @@
 #define MAX_SEQ 63
 #define WINDOW_SIZE 4
 #define DATA_TIMER 2000
+#define ACK_TIMER 300
 
 struct FRAME {
 	unsigned char kind; /* FRAME_DATA */
@@ -39,6 +40,9 @@ static void put_frame(unsigned char *frame, int len) {
 	phl_ready = 0;
 }
 
+/*
+@brief 此函数用于发送 seq 为 frame_nr 的 frame
+*/
 static void send_data_frame(unsigned char frame_nr) {
 	struct FRAME s;
 
@@ -48,7 +52,7 @@ static void send_data_frame(unsigned char frame_nr) {
 	memcpy(s.data, out_buff[frame_nr], PKT_LEN);
 
 	dbg_frame("Send DATA %d %d, ID %d\n", s.seq, s.ack, *(short *)s.data);
-
+	stop_ack_timer();
 	put_frame((unsigned char *)&s, 3 + PKT_LEN);
 	start_timer(frame_nr, DATA_TIMER);
 }
@@ -60,7 +64,7 @@ static void send_ack_frame(void) {
 	s.ack = (frame_expected + MAX_SEQ) % (MAX_SEQ + 1);
 
 	dbg_frame("Send ACK  %d\n", s.ack);
-
+	stop_ack_timer();
 	put_frame((unsigned char *)&s, 2);
 }
 
@@ -114,11 +118,13 @@ int main(int argc, char **argv) {
 				handle_ack(f.ack);
 				dbg_frame("Recv DATA %d %d, ID %d\n", f.seq,
 					  f.ack, *(short *)f.data);
-				if (f.seq == frame_expected) {
+				if (f.seq == frame_expected) { // 正常的按序数据，正常接收即可
 					put_packet(f.data, len - 7);
 					frame_expected = (frame_expected + 1) % (MAX_SEQ + 1);
+					start_ack_timer(ACK_TIMER); // 用于实现 Piggybacking
+				} else { // 如果收到的不是当前期待的帧，不再采用 Piggybacking 效率太低，我们直接发送 ACK
+					send_ack_frame();
 				}
-				send_ack_frame();
 			}
 			break;
 
@@ -129,6 +135,11 @@ int main(int argc, char **argv) {
 				send_data_frame(next);
 				next = (next + 1) % (MAX_SEQ + 1);
 			}
+			break;
+
+		case ACK_TIMEOUT: // 新增 ack_timer 事件用于进一步强化 Piggybacking
+			dbg_event("---- ACK timeout, send standalone ACK\n");
+			send_ack_frame();
 			break;
 		}
 
