@@ -148,11 +148,12 @@ int main(int argc, char **argv) {
 					}
 				}
 			}
-			handle_ack(f.ack);
 			if (f.kind == FRAME_NAK && between(ack_expected, f.ack, next_frame_to_send)) {
 				dbg_frame("Recv NAK  %d\n", f.ack);
 				send_frame_datalink(FRAME_DATA, f.ack, frame_expected);
+				break;
 			}
+			handle_ack(f.ack);
 			break;
 
 		case DATA_TIMEOUT:
