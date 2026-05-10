@@ -1,6 +1,6 @@
 # Lab1 数据链路层实验说明
 
-这是本实验的 Linux/WSL 版本。程序会启动两个本地进程，分别模拟站点 `A` 和 `B`，它们通过 `protocol.c` 提供的仿真信道通信，真正的协议逻辑放在 `protocols/` 目录里，可以按需要编译 SR 或 GBN 版本。
+这是本实验的 Linux/WSL 版本。程序会启动两个本地进程，分别模拟站点 `A` 和 `B`，它们通过 `protocol.c` 提供的仿真信道通信，真正的协议逻辑放在 `protocols/` 目录里，可以按需要编译基础 SR、优化版 SR 或 GBN 版本。
 
 ## 目录结构
 
@@ -10,6 +10,7 @@
 Lab1-linux/
 ├── protocols/
 │   ├── sr.c        # Selective Repeat，当前默认编译版本
+│   ├── sr_opt.c    # 优化版 Selective Repeat
 │   └── gbn.c       # Go-Back-N
 ├── datalink.h      # 帧类型定义
 ├── protocol.h      # 实验库接口声明
@@ -41,21 +42,49 @@ make
 
 | 命令 | 含义 |
 | --- | --- |
-| `make` | 默认编译 SR，即 `protocols/sr.c`。 |
-| `make sr` | 编译 SR。 |
+| `make` | 默认编译基础 SR，即 `protocols/sr.c`。 |
+| `make sr` | 编译基础 SR。 |
+| `make sr_opt` | 编译优化版 SR，即 `protocols/sr_opt.c`。 |
 | `make gbn` | 编译 GBN。 |
 | `make PROTOCOL=sr datalink` | 显式选择 `protocols/sr.c`。 |
+| `make PROTOCOL=sr_opt datalink` | 显式选择 `protocols/sr_opt.c`。 |
 | `make PROTOCOL=gbn datalink` | 显式选择 `protocols/gbn.c`。 |
 | `make list` | 查看当前 Makefile 中列出的协议名。 |
 | `make clean` | 删除 `datalink`、中间 `.o` 文件和根目录日志文件。 |
 
-如果以后增加新的协议文件，例如 `protocols/sr_opt.c`，可以直接使用：
+当前可用协议可以用下面的命令查看：
 
 ```bash
-make PROTOCOL=sr_opt datalink
+make list
 ```
 
 注意：`make clean` 会删除根目录下的 `*.log`，需要保留性能测试日志时请先备份或使用 `-l <file>` 指定单独文件名。
+
+### 协议版本说明
+
+| 协议名 | 源文件 | 用途 |
+| --- | --- | --- |
+| `sr` | `protocols/sr.c` | 基础 SR，保留当前已验证的 32 发送窗口实现，作为默认版本。 |
+| `sr_opt` | `protocols/sr_opt.c` | 优化版 SR，参考学长实现思路，使用环形缓存、短 ACK/NAK 控制帧和独立 DATA 重传。 |
+| `gbn` | `protocols/gbn.c` | Go-Back-N 协议实现。 |
+
+优化版 SR 的主要逻辑：
+
+| 机制 | 说明 |
+| --- | --- |
+| DATA 帧 | 携带 CRC，按 `seq % NR_BUFS` 使用发送和接收缓存。 |
+| ACK/NAK 帧 | 使用 3 字节短控制帧，减少确认帧开销。 |
+| DATA 定时器 | 定时器编号使用缓存下标，超时时再映射回当前发送窗口里的真实序号。 |
+| NAK | 针对当前接收窗口缺失的 `frame_expected` 发送，触发对端单帧重传。 |
+
+测试优化版 SR 时，先重新编译：
+
+```bash
+make clean
+make sr_opt
+```
+
+之后仍然使用下面的启动和测试命令。
 
 ## 启动方式
 
