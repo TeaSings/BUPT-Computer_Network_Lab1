@@ -1,10 +1,27 @@
 # Lab1 数据链路层实验说明
 
-这是本实验的 Linux/WSL 版本。程序会启动两个本地进程，分别模拟站点 `A` 和 `B`，它们通过 `protocol.c` 提供的仿真信道通信，真正的协议逻辑写在 `datalink.c` 里。
+这是本实验的 Linux/WSL 版本。程序会启动两个本地进程，分别模拟站点 `A` 和 `B`，它们通过 `protocol.c` 提供的仿真信道通信，真正的协议逻辑放在 `protocols/` 目录里，可以按需要编译 SR 或 GBN 版本。
+
+## 目录结构
+
+和协议实现直接相关的文件如下：
+
+```text
+Lab1-linux/
+├── protocols/
+│   ├── sr.c        # Selective Repeat，当前默认编译版本
+│   └── gbn.c       # Go-Back-N
+├── datalink.h      # 帧类型定义
+├── protocol.h      # 实验库接口声明
+├── protocol.c      # 实验库：物理层、网络层、事件和定时器
+├── lprintf.c       # 日志输出
+├── crc32.c         # CRC32
+└── Makefile
+```
 
 ## 编译
 
-在 WSL 里进入目录后执行：
+在 WSL/Linux 里进入目录后执行：
 
 ```bash
 cd '/mnt/d/desktop/Lab1-2024(Win+Linux)/Lab1-linux'
@@ -12,11 +29,33 @@ make clean
 make
 ```
 
-编译完成后生成可执行文件：
+`make` 默认编译 `protocols/sr.c`，生成可执行文件：
 
 ```bash
 ./datalink
 ```
+
+### 选择协议
+
+当前 Makefile 支持按协议编译：
+
+| 命令 | 含义 |
+| --- | --- |
+| `make` | 默认编译 SR，即 `protocols/sr.c`。 |
+| `make sr` | 编译 SR。 |
+| `make gbn` | 编译 GBN。 |
+| `make PROTOCOL=sr datalink` | 显式选择 `protocols/sr.c`。 |
+| `make PROTOCOL=gbn datalink` | 显式选择 `protocols/gbn.c`。 |
+| `make list` | 查看当前 Makefile 中列出的协议名。 |
+| `make clean` | 删除 `datalink`、中间 `.o` 文件和根目录日志文件。 |
+
+如果以后增加新的协议文件，例如 `protocols/sr_opt.c`，可以直接使用：
+
+```bash
+make PROTOCOL=sr_opt datalink
+```
+
+注意：`make clean` 会删除根目录下的 `*.log`，需要保留性能测试日志时请先备份或使用 `-l <file>` 指定单独文件名。
 
 ## 启动方式
 
@@ -41,7 +80,7 @@ cd '/mnt/d/desktop/Lab1-2024(Win+Linux)/Lab1-linux'
 - `a` 表示站点 A
 - `b` 表示站点 B
 
-`A` 会先监听本地 TCP 端口，`B` 再去连接 `A`。这个 TCP 连接只是实验库内部用来模拟物理层信道，真正的链路层协议还是由 `datalink.c` 实现。
+`A` 会先监听本地 TCP 端口，`B` 再去连接 `A`。这个 TCP 连接只是实验库内部用来模拟物理层信道，真正的链路层协议由本次编译选择的 `protocols/*.c` 文件实现。
 
 ## 参数写法要注意
 
@@ -67,17 +106,17 @@ cd '/mnt/d/desktop/Lab1-2024(Win+Linux)/Lab1-linux'
 
 | 参数 | 含义 |
 | --- | --- |
-| `a` | 启动站点 A。 |
-| `b` | 启动站点 B。 |
-| `-u` / `--utopia` | 无误码信道，误码率为 0。 |
-| `-f` / `--flood` | 网络层以洪水式速度产生分组。 |
-| `-b <rate>` / `--ber=<rate>` | 设置误码率，例如 `-b 1e-4`。 |
-| `-t <seconds>` / `--ttl=<seconds>` | 运行指定秒数后自动退出。 |
-| `-d <mask>` / `--debug=<mask>` | 打开调试输出。一般 `-d3` 最常用。 |
-| `-p <port>` / `--port=<port>` | 指定 TCP 端口，端口冲突时可改。 |
-| `-l <file>` / `--log=<file>` | 指定日志文件名。 |
+| `a` | 启动站点 A，A 作为 TCP 服务端。 |
+| `b` | 启动站点 B，B 作为 TCP 客户端。 |
+| `-u` / `--utopia` | 无误码信道，把本站接收方向误码率设为 0。 |
+| `-f` / `--flood` | flood 模式，网络层持续高速产生分组，用于测吞吐上限。 |
+| `-b <rate>` / `--ber=<rate>` | 设置本站接收方向误码率，例如 `-b 1e-4`。 |
+| `-t <seconds>` / `--ttl=<seconds>` | 运行指定秒数后自动退出，长测常用 `650`、`900`、`1200`。 |
+| `-d <mask>` / `--debug=<mask>` | 打开调试输出，bit0 为事件、bit1 为帧、bit2 为警告；常用 `-d3`。 |
+| `-p <port>` / `--port=<port>` | 指定 TCP 端口，端口冲突或多组并行测试时可改。 |
+| `-l <file>` / `--log=<file>` | 指定日志文件名，建议性能测试时为每组测试单独命名。 |
 | `-n` / `--nolog` | 不生成日志文件。 |
-| `-i` / `--ibib` | 改变站点 B 的网络层发包节奏。一般前期不用。 |
+| `-i` / `--ibib` | 改变站点 B 的网络层发包节奏，使 B 的 busy/idle 周期与默认相反。 |
 | `-?` / `--help` | 打印帮助信息。 |
 
 实验库默认信道参数：
@@ -290,9 +329,9 @@ datalink-B.log
 ./datalink -d7 -t 30 b
 ```
 
-## 当前 GBN 的检查顺序
+## 回归测试顺序
 
-每次改完 `datalink.c`，建议按这个顺序回归测试：
+每次改完某个 `protocols/*.c`，建议按这个顺序回归测试：
 
 1. `-u -d3 -t 30`，看帧级行为是否正确。
 2. `-u -t 120`，看无误码稳定性。
@@ -301,7 +340,17 @@ datalink-B.log
 5. `-f -b 1e-4 -t 120`，看高误码恢复。
 6. `-f -t 900`，看长时间稳定运行。
 
-当前基础 GBN 应该满足的行为是：
+SR 版本应该满足的行为是：
+
+| 场景 | 预期行为 |
+| --- | --- |
+| 按序收到 DATA | 交付分组，推进接收窗口，延迟发送 ACK。 |
+| 收到窗口内乱序 DATA | 缓存到 `in_buff`，必要时发送 NAK 催缺失帧。 |
+| 缺失帧补到后 | 连续交付已经缓存的帧，并检查是否出现新的缺口。 |
+| DATA 超时 | 只重传对应超时的数据帧。 |
+| ACK 超时 | 如果 ACK 没有被捎带出去，就单独发送 ACK。 |
+
+GBN 版本应该满足的行为是：
 
 | 场景 | 预期行为 |
 | --- | --- |
@@ -309,4 +358,3 @@ datalink-B.log
 | 收到乱序或重复 DATA | 不交付，发送当前最后按序帧的 ACK。 |
 | DATA 超时 | 从 `ack_expected` 开始重传整个窗口。 |
 | ACK 超时 | 如果之前的 ACK 没有被捎带出去，就单独发 ACK。 |
-
