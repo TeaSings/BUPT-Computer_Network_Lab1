@@ -4,54 +4,73 @@
 #include "protocol.h"
 #include "datalink.h"
 
+/**
+ * @brief 基础 Selective Repeat。
+ *
+ * 发送端为每个 DATA 帧单独计时，接收端缓存窗口内乱序帧。
+ * ACK/NAK 都通过带 CRC 的控制帧发送，可靠性优先于控制帧开销。
+ */
 #define MAX_SEQ 63
-#define WINDOW_SIZE 32 // 由于是选择重传，故增大窗口大小
+#define WINDOW_SIZE 32
 #define DATA_TIMER 2000
 #define ACK_TIMER 300
 
 struct FRAME {
-	unsigned char kind; /* FRAME_DATA */
+	unsigned char kind;
 	unsigned char ack;
 	unsigned char seq;
 	unsigned char data[PKT_LEN];
 	unsigned int padding;
 };
 
-static unsigned char ack_expected = 0; // 最早还没被确认的帧，也就是发送窗口的左闭区间
-static unsigned char next_frame_to_send = 0; // 下一个要发送的序号，也就是发送窗口的右开区间
-static unsigned char frame_expected = 0; // 接收方期待的数据帧序号，也就是接收窗口的左闭区间
-static unsigned char too_far = WINDOW_SIZE; // 接收窗口的右开边界
-static unsigned char nbuffered = 0; // 当前发送窗口中未确认的帧的数量
-static unsigned char nak_sent = 0; // NAK 是否发送标志
-static int phl_ready = 0; // 物理层就绪标志
+/* 发送窗口为 [ack_expected, next_frame_to_send)，接收窗口为 [frame_expected, too_far)。 */
+static unsigned char ack_expected = 0;
+static unsigned char next_frame_to_send = 0;
+static unsigned char frame_expected = 0;
+static unsigned char too_far = WINDOW_SIZE;
+static unsigned char nbuffered = 0;
+
+/* 同一个缺口只发一次 NAK，直到缺口被补上后再允许新的 NAK。 */
+static unsigned char nak_sent = 0;
+static int phl_ready = 0;
 
 static unsigned char out_buff[MAX_SEQ + 1][PKT_LEN];
 static unsigned char arrived[MAX_SEQ + 1];
 static unsigned char in_buff[MAX_SEQ + 1][PKT_LEN];
 
-/*
-@brief 此函数用于判断 b 是否在环形序号区间 [a, c) 当中
-*/
+/**
+ * @brief 判断 b 是否落在环形序号区间 [a, c) 内。
+ * @param a 区间左边界，包含。
+ * @param b 待判断的序号。
+ * @param c 区间右边界，不包含。
+ */
 static int between(unsigned char a, unsigned char b, unsigned char c) {
 	return ((a <= b) && (b < c)) ||
         ((c < a) && (a <= b)) ||
         ((b < c) && (c < a));
 }
 
+/**
+ * @brief 为帧追加 CRC 后交给物理层。
+ * @param frame 指向帧头部的缓冲区。
+ * @param len 不包含 CRC 的帧长度。
+ */
 static void put_frame(unsigned char *frame, int len) {
 	*(unsigned int *)(frame + len) = crc32(frame, len);
 	send_frame(frame, len + 4);
 	phl_ready = 0;
 }
 
-/*
-@brief 此函数用于发送 seq 为 frame_nr 的 frame
-*/
+/**
+ * @brief 发送或重传一个 DATA 帧。
+ * @param frame_nr 要发送的数据帧序号。
+ */
 static void send_data_frame(unsigned char frame_nr) {
 	struct FRAME s;
 
 	s.kind = FRAME_DATA;
 	s.seq = frame_nr;
+	/* ACK 确认的是 frame_expected 前一个已经按序收到的帧。 */
 	s.ack = (frame_expected + MAX_SEQ) % (MAX_SEQ + 1);
 	memcpy(s.data, out_buff[frame_nr], PKT_LEN);
 
@@ -61,6 +80,9 @@ static void send_data_frame(unsigned char frame_nr) {
 	start_timer(frame_nr, DATA_TIMER);
 }
 
+/**
+ * @brief ACK 定时器到期后，单独发送当前累计确认号。
+ */
 static void send_ack_frame(void) {
 	struct FRAME s;
 
@@ -72,9 +94,9 @@ static void send_ack_frame(void) {
 	put_frame((unsigned char *)&s, 2);
 }
 
-/*
-@brief 此函数仿照 send_ack_frame 编写，用于发送NAK
-*/
+/**
+ * @brief 请求对端重传当前缺失的 frame_expected。
+ */
 static void send_nak_frame(void) {
 	struct FRAME s;
 	s.kind = FRAME_NAK;
@@ -84,22 +106,24 @@ static void send_nak_frame(void) {
 	put_frame((unsigned char *)& s, 2);
 }
 
-/*
-@brief 这个函数用于处理 Cumulative ACK
-*/
+/**
+ * @brief 根据累计确认号滑动发送窗口。
+ * @param curr_ack 对端确认的最后一个连续收到的帧号。
+ */
 static void handle_ack(unsigned char curr_ack) {
-	while (between(ack_expected, curr_ack, next_frame_to_send)) { // 依据收到的 ACK 调整发送窗口的左边界
+	while (between(ack_expected, curr_ack, next_frame_to_send)) {
 		nbuffered--;
 		stop_timer(ack_expected);
 		ack_expected = (ack_expected + 1) % (MAX_SEQ + 1);
 	}
 }
 
-/*
-@brief 这个函数用于处理收到 nak 时候的重传操作
-*/
+/**
+ * @brief 处理 NAK，选择性重传被指出的缺失帧。
+ * @param curr_nak 对端当前缺失的帧号。
+ */
 static void handle_nak(unsigned char curr_nak) {
-	if (between(ack_expected, curr_nak, next_frame_to_send)) { // 判断当前 NAK 是否过期，如果没有过期则重传自 NAK 以来的所有帧
+	if (between(ack_expected, curr_nak, next_frame_to_send)) {
 		send_data_frame(curr_nak);
 	}
 }
@@ -122,7 +146,7 @@ int main(int argc, char **argv) {
 			get_packet(out_buff[next_frame_to_send]);
 			nbuffered++;
 			send_data_frame(next_frame_to_send);
-			next_frame_to_send = (next_frame_to_send + 1) % (MAX_SEQ + 1); // 这里采用模除回滚帧序号
+			next_frame_to_send = (next_frame_to_send + 1) % (MAX_SEQ + 1);
 			break;
 
 		case PHYSICAL_LAYER_READY:
@@ -133,7 +157,7 @@ int main(int argc, char **argv) {
 			len = recv_frame((unsigned char *)&f, sizeof f);
 			if (len < 5 || crc32((unsigned char *)&f, len) != 0) {
 				dbg_event("**** Receiver Error, Bad CRC Checksum\n");
-				if (nak_sent == 0) { // 依据有无发送过 NAK 来决定是否要发送，避免对于同一个序号的错帧反复刷屏 NAK
+				if (nak_sent == 0) {
 					send_nak_frame();
 					nak_sent = 1;
 				}
@@ -143,26 +167,29 @@ int main(int argc, char **argv) {
 				handle_ack(f.ack);
 				dbg_frame("Recv ACK  %d\n", f.ack);
 			}
-			if (f.kind == FRAME_DATA) { // GoBackN 允许 Piggybacking 因此在正常的 FRAME_DATA 当中也要处理ACK
+			if (f.kind == FRAME_DATA) {
 				dbg_frame("Recv DATA %d %d, ID %d\n", f.seq,
 					  f.ack, *(short *)f.data);
+				/* DATA 帧也可能捎带 ACK，需要先处理发送窗口。 */
 				handle_ack(f.ack);
-				if (between(frame_expected, f.seq, too_far)) { // SR 需要缓存乱序到来的帧，这里使用 between 判断是不是在接收窗口内
+				if (between(frame_expected, f.seq, too_far)) {
 					if (arrived[f.seq] == 0) {
 						arrived[f.seq] = 1;
 						memcpy(in_buff[f.seq], f.data, PKT_LEN);
 					}
-					if (f.seq == frame_expected) { // 如果接收到的是 frame_expected 指向的帧，那么就开始交付缓存的帧
+					if (f.seq == frame_expected) {
+						/* 从窗口左端开始，把已经连续到达的缓存帧一次性交付上层。 */
 						while (arrived[frame_expected]) {
 							put_packet(in_buff[frame_expected], len - 7);
 							arrived[frame_expected] = 0;
 							frame_expected = (frame_expected + 1) % (MAX_SEQ + 1);
-							too_far = (too_far + 1) % (MAX_SEQ + 1); // 接收窗口左右边界同时更新
+							too_far = (too_far + 1) % (MAX_SEQ + 1);
 							nak_sent = 0;
-							start_ack_timer(ACK_TIMER); // Piggybacking 记得打开计时器
+							start_ack_timer(ACK_TIMER);
 						}
 						
 						if (nak_sent == 0) {
+							/* 若窗口内已经缓存了更靠后的帧，说明 frame_expected 处仍有缺口。 */
 							unsigned char next = (frame_expected + 1) % (MAX_SEQ + 1);
 							while (next != too_far) {
 								if (arrived[next]) {
@@ -173,13 +200,13 @@ int main(int argc, char **argv) {
 								next = (next + 1) % (MAX_SEQ + 1);
 							}
 						}
-					} else { // 如果来的不是 frame_expected 指向的帧，那么就看看是否需要发 NAK
+					} else {
 						if (nak_sent == 0) {
 							nak_sent = 1;
 							send_nak_frame();
 						}
 					}
-				} else { // 如果是旧的重复帧，发送 ACK
+				} else {
 					send_ack_frame();
 				}
 			}
@@ -189,20 +216,20 @@ int main(int argc, char **argv) {
 			}
 			break;
 
-		case DATA_TIMEOUT: // SR 只发送对应 TIMEOUT 的帧
+		case DATA_TIMEOUT:
 			dbg_event("---- DATA %d timeout\n", arg);
 			if (between(ack_expected, arg, next_frame_to_send)) {
 				send_data_frame(arg);
 			}
 			break;
 
-		case ACK_TIMEOUT: // 新增 ack_timer 事件用于进一步优化 Piggybacking
+		case ACK_TIMEOUT:
 			dbg_event("---- ACK timeout, send standalone ACK\n");
 			send_ack_frame();
 			break;
 		}
 
-		if (nbuffered < WINDOW_SIZE && phl_ready) // 发送窗口还有空位
+		if (nbuffered < WINDOW_SIZE && phl_ready)
 			enable_network_layer();
 		else
 			disable_network_layer();
