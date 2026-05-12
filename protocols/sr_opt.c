@@ -9,6 +9,7 @@
  *
  * DATA 帧仍带 CRC，ACK/NAK 使用 3 字节短控制帧以降低确认开销。
  * 发送和接收缓存按 WINDOW_SIZE 做环形复用，定时器编号也映射到缓存槽位。
+ * 误码恢复时优先针对坏帧头部携带的序号发送 NAK，减少等待超时重传的时间。
  */
 #define MAX_SEQ 63
 #define WINDOW_SIZE 32
@@ -69,7 +70,7 @@ static void put_frame(unsigned char *frame, int len) {
  * @brief 统一发送 DATA、ACK 和 NAK。
  * @param kind 帧类型，取 FRAME_DATA、FRAME_ACK 或 FRAME_NAK。
  * @param frame_nr DATA 帧要发送的序号；ACK/NAK 调用时不使用。
- * @param frame_expected 本端当前缺失或期待的接收序号。
+ * @param frame_expected DATA/ACK 调用时表示本端接收窗口左端；NAK 调用时表示请求重传的序号。
  */
 static void send_frame_datalink(unsigned char kind, unsigned char frame_nr, unsigned char frame_expected) {
 	struct FRAME s;
@@ -89,7 +90,7 @@ static void send_frame_datalink(unsigned char kind, unsigned char frame_nr, unsi
 		start_timer(frame_nr % NR_BUFS, DATA_TIMER);
 	} else {
 		if (kind == FRAME_NAK) {
-			/* NAK 控制含义：ack 字段改作当前缺失帧号。 */
+			/* NAK 控制含义：ack 字段改作希望对端重传的帧号。 */
 			s.ack = frame_expected;
 			dbg_frame("Send NAK  %d\n", s.ack);
 		} else {
@@ -152,8 +153,8 @@ int main(int argc, char **argv) {
 			}
 			if (len >= 5 && crc32((unsigned char *)&f, len) != 0) {
 				dbg_event("**** Receiver Error, Bad CRC Checksum\n");
-				/* DATA 帧损坏时，直接请求当前窗口左端缺失帧。 */
-				send_frame_datalink(FRAME_NAK, 0, frame_expected);
+				/* DATA 帧损坏时，尝试按帧头中的 seq 精准请求重传，发送端会过滤非法 NAK。 */
+				send_frame_datalink(FRAME_NAK, 0, f.seq);
 				break;
 			}
 			if (f.kind == FRAME_ACK) {
