@@ -11,7 +11,7 @@
  * 发送端超时时从发送窗口左端开始重传整个窗口。
  */
 #define MAX_SEQ 63
-#define WINDOW_SIZE 32
+#define WINDOW_SIZE 8
 #define DATA_TIMER 2000
 #define ACK_TIMER 300
 
