@@ -6,7 +6,7 @@ PROTOCOL ?= sr
 PROTO_SRC = protocols/$(PROTOCOL).c
 COMMON_SRC = protocol.c lprintf.c crc32.c
 
-.PHONY: all sr sr_opt gbn clean list
+.PHONY: all sr sr_opt gbn stopwait clean list
 
 all: datalink
 
@@ -22,8 +22,11 @@ sr_opt:
 gbn:
 	$(MAKE) PROTOCOL=gbn datalink
 
+stopwait:
+	$(MAKE) PROTOCOL=stopwait datalink
+
 list:
-	@echo "Available protocols: sr sr_opt gbn"
+	@echo "Available protocols: sr sr_opt gbn stopwait"
 
 clean:
 	$(RM) datalink *.o protocols/*.o *.log

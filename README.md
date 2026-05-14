@@ -7,6 +7,7 @@
 | `sr` | `protocols/sr.c` | 基础 Selective Repeat，默认编译版本。 |
 | `sr_opt` | `protocols/sr_opt.c` | 优化版 Selective Repeat，使用短 ACK/NAK、环形缓存和精准 NAK。 |
 | `gbn` | `protocols/gbn.c` | Go-Back-N，发送窗口为 8。 |
+| `stopwait` | `protocols/stopwait.c` | 停等协议，用于对照和基础验证。 |
 
 主要公共文件：
 
@@ -26,6 +27,7 @@ make clean
 make sr       # 基础 SR
 make sr_opt   # 优化版 SR
 make gbn      # GBN
+make stopwait # 停等协议
 ```
 
 `make` 默认等价于编译基础 SR。切换协议前建议先执行 `make clean`，避免旧的 `datalink` 可执行文件影响测试。
@@ -113,6 +115,12 @@ GBN：
 - 发送窗口使用 `8`，避免高误码下窗口过大造成大量回退重传。
 - DATA 超时后从发送窗口左端开始回退重传。
 - 收到 NAK 后从缺失帧开始重传。
+
+停等协议：
+
+- 发送窗口大小为 `1`。
+- 序号和确认号在 `0`、`1` 之间交替。
+- 当前 DATA 帧确认前，不会从网络层取下一帧。
 
 ## 环境建议
 
