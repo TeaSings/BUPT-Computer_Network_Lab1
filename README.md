@@ -1,127 +1,51 @@
-# Lab1 数据链路层协议
+# 2026 Spring Computer Networks Lab 1
 
-本目录是计算机网络实验 1 的 Linux 版本，实现了三种协议：
+This repository contains the Linux implementation for the 2026 spring Computer Networks Lab 1. The lab focuses on data-link-layer reliable transmission protocols over the supplied simulator.
 
-| 协议 | 源文件 | 说明 |
+## Contents
+
+| Target | Source | Description |
 | --- | --- | --- |
-| `sr` | `protocols/sr.c` | 基础 Selective Repeat，默认编译版本。 |
-| `sr_opt` | `protocols/sr_opt.c` | 优化版 Selective Repeat，使用短 ACK/NAK、环形缓存和精准 NAK。 |
-| `gbn` | `protocols/gbn.c` | Go-Back-N，发送窗口为 8。 |
-| `stopwait` | `protocols/stopwait.c` | 停等协议，用于对照和基础验证。 |
+| `stopwait` | `protocols/stopwait.c` | Stop-and-Wait / Alternating Bit protocol. |
+| `gbn` | `protocols/gbn.c` | Go-Back-N with cumulative ACK and timeout retransmission. |
+| `sr` | `protocols/sr.c` | Selective Repeat with per-frame timers and receiver buffering. |
+| `sr_opt` | `protocols/sr_opt.c` | Optimized Selective Repeat with compact ACK/NAK frames and ring buffers. |
 
-主要公共文件：
+The framework files (`protocol.c`, `protocol.h`, `datalink.h`, `lprintf.c`, `crc32.c`) are provided by the lab environment. `Makefile` selects which protocol implementation is linked into the `datalink` executable.
 
-```text
-protocol.c   实验库，提供物理层、网络层、事件和定时器
-protocol.h   实验库接口声明
-datalink.h   帧类型定义
-lprintf.c    日志输出
-crc32.c      CRC32
-Makefile     协议编译入口
-```
-
-进入项目目录后按协议编译：
+## Build
 
 ```bash
-make clean
-make sr       # 基础 SR
-make sr_opt   # 优化版 SR
-make gbn      # GBN
-make stopwait # 停等协议
+make sr
+make sr_opt
+make gbn
+make stopwait
 ```
 
-`make` 默认等价于编译基础 SR。切换协议前建议先执行 `make clean`，避免旧的 `datalink` 可执行文件影响测试。
+`make` builds `sr` by default. Run `make clean` before switching targets if you want to remove the previous `datalink` executable.
 
-## 运行
+## Run
 
-需要开两个终端，先启动 A，再启动 B。选项必须写在站点名 `a` / `b` 前面。
-
-终端 1：
+Open two terminals in the repository directory and start station A before station B:
 
 ```bash
 ./datalink -f -u -n -t 650 a
-```
-
-终端 2：
-
-```bash
 ./datalink -f -u -n -t 650 b
 ```
 
-常用参数：
+Useful options:
 
-| 参数 | 含义 |
+| Option | Meaning |
 | --- | --- |
-| `a` / `b` | 启动站点 A / B。 |
-| `-u`, `--utopia` | 无误码信道。 |
-| `-f`, `--flood` | 网络层洪水式产生分组。 |
-| `-b <rate>`, `--ber=<rate>` | 设置误码率，例如 `-b 1e-4`。 |
-| `-t <seconds>`, `--ttl=<seconds>` | 指定运行时间，性能测试使用 `650` 秒。 |
-| `-n`, `--nolog` | 不生成日志文件，性能测试推荐开启。 |
-| `-d <mask>`, `--debug=<mask>` | 调试输出，常用 `-d3` 查看事件和帧。 |
-| `-p <port>`, `--port=<port>` | 指定端口，端口冲突时 A/B 要保持一致。 |
+| `a` / `b` | Start station A or B. |
+| `-u` | Use an error-free channel. |
+| `-f` | Enable flood mode. |
+| `-b <rate>` | Set bit error rate, for example `-b 1e-4`. |
+| `-t <seconds>` | Set runtime. |
+| `-n` | Disable log-file generation. |
+| `-d <mask>` | Enable debug output. |
+| `-p <port>` | Use a custom port when the default port is occupied. |
 
-## 测试场景
+## Notes
 
-每组都分别在两个终端运行 A/B：
-
-| 场景 | 命令选项 |
-| --- | --- |
-| 无误码 | `-u -n -t 650` |
-| 默认误码 | `-n -t 650` |
-| flood + 无误码 | `-f -u -n -t 650` |
-| flood + 默认误码 | `-f -n -t 650` |
-| flood + 高误码 | `-f -b 1e-4 -n -t 650` |
-
-示例：
-
-```bash
-./datalink -f -b 1e-4 -n -t 650 a
-./datalink -f -b 1e-4 -n -t 650 b
-```
-
-## 当前性能记录
-
-以下数据在 Ubuntu 虚拟机中测试，运行时间均为 `650s`。虚拟机环境下 `System too busy` 明显减少，结果比 Windows/WSL 目录下测试更稳定。
-
-| 场景 | GBN A/B | SR A/B | 优化 SR A/B |
-| --- | --- | --- | --- |
-| `-u` | `55.0% / 97.0%` | `55.0% / 96.7%` | `55.0% / 97.0%` |
-| 默认 | `49.4% / 89.2%` | `53.9% / 93.9%` | `54.0% / 94.7%` |
-| `-f -u` | `97.0% / 97.0%` | `97.0% / 97.0%` | `97.0% / 97.0%` |
-| `-f` | `87.1% / 87.4%` | `95.2% / 94.4%` | `94.5% / 94.5%` |
-| `-f -b 1e-4` | `约 37% / 37%` | `62.5% / 61.6%` | `75.9% / 74.1%` |
-
-优化版 SR 在高误码场景下提升最明显。关键原因是 CRC 错帧时尝试读取坏帧头部的 `seq` 字段，并发送针对该序号的 NAK；发送端会检查 NAK 序号是否仍在当前发送窗口内，从而过滤过期或非法 NAK。
-
-## 协议要点
-
-基础 SR：
-
-- 发送端为每个 DATA 帧单独计时。
-- 接收端缓存窗口内乱序帧。
-- ACK/NAK 使用带 CRC 的控制帧。
-
-优化版 SR：
-
-- DATA 帧带 CRC，ACK/NAK 使用 3 字节短控制帧。
-- 缓存和定时器按 `seq % NR_BUFS` 复用。
-- 收到 NAK 后只重传指定 DATA 帧。
-- CRC 错帧时优先按 `f.seq` 精准 NAK，减少等待超时重传的时间。
-
-GBN：
-
-- 接收端只接收按序 DATA。
-- 发送窗口使用 `8`，避免高误码下窗口过大造成大量回退重传。
-- DATA 超时后从发送窗口左端开始回退重传。
-- 收到 NAK 后从缺失帧开始重传。
-
-停等协议：
-
-- 发送窗口大小为 `1`。
-- 序号和确认号在 `0`、`1` 之间交替。
-- 当前 DATA 帧确认前，不会从网络层取下一帧。
-
-## 环境建议
-
-性能测试推荐在原生 Linux 或 Ubuntu 虚拟机中运行，并将项目放在虚拟机自己的磁盘目录下。WSL 中尽量放在 `~/`，不要放在 `/mnt/c` 或 `/mnt/d` 共享路径下。测试时使用 `-n` 可以减少日志 I/O 对结果的影响。
+This repository intentionally keeps only source code, build files, and small reference executables needed for the lab. Experiment reports, score sheets, generated logs, and local build outputs are excluded.
