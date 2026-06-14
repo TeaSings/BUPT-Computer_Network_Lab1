@@ -1,19 +1,19 @@
-# 2026 Spring Computer Networks Lab 1
+# 2026 年春计算机网络 Lab1
 
-This repository contains the Linux implementation for the 2026 spring Computer Networks Lab 1. The lab focuses on data-link-layer reliable transmission protocols over the supplied simulator.
+本仓库是 2026 年春季计算机网络 Lab1 的 Linux 版本实现，内容围绕实验提供的数据链路层模拟环境，完成可靠传输协议的设计与实现。
 
-## Contents
+## 内容
 
-| Target | Source | Description |
+| 目标 | 源文件 | 说明 |
 | --- | --- | --- |
-| `stopwait` | `protocols/stopwait.c` | Stop-and-Wait / Alternating Bit protocol. |
-| `gbn` | `protocols/gbn.c` | Go-Back-N with cumulative ACK and timeout retransmission. |
-| `sr` | `protocols/sr.c` | Selective Repeat with per-frame timers and receiver buffering. |
-| `sr_opt` | `protocols/sr_opt.c` | Optimized Selective Repeat with compact ACK/NAK frames and ring buffers. |
+| `stopwait` | `protocols/stopwait.c` | 停等协议 / 交替位协议。 |
+| `gbn` | `protocols/gbn.c` | Go-Back-N，使用累计 ACK 和超时回退重传。 |
+| `sr` | `protocols/sr.c` | Selective Repeat，支持单帧定时器和接收端乱序缓存。 |
+| `sr_opt` | `protocols/sr_opt.c` | 优化版 Selective Repeat，使用短 ACK/NAK 帧和环形缓存。 |
 
-The framework files (`protocol.c`, `protocol.h`, `datalink.h`, `lprintf.c`, `crc32.c`) are provided by the lab environment. `Makefile` selects which protocol implementation is linked into the `datalink` executable.
+实验框架文件包括 `protocol.c`、`protocol.h`、`datalink.h`、`lprintf.c` 和 `crc32.c`。`Makefile` 用于选择具体协议源码并编译生成 `datalink` 可执行文件。
 
-## Build
+## 编译
 
 ```bash
 make sr
@@ -22,30 +22,30 @@ make gbn
 make stopwait
 ```
 
-`make` builds `sr` by default. Run `make clean` before switching targets if you want to remove the previous `datalink` executable.
+默认执行 `make` 会编译 `sr`。切换协议目标前可先运行 `make clean`，避免旧的 `datalink` 可执行文件影响测试。
 
-## Run
+## 运行
 
-Open two terminals in the repository directory and start station A before station B:
+在仓库目录下打开两个终端，先启动站点 A，再启动站点 B：
 
 ```bash
 ./datalink -f -u -n -t 650 a
 ./datalink -f -u -n -t 650 b
 ```
 
-Useful options:
+常用参数：
 
-| Option | Meaning |
+| 参数 | 含义 |
 | --- | --- |
-| `a` / `b` | Start station A or B. |
-| `-u` | Use an error-free channel. |
-| `-f` | Enable flood mode. |
-| `-b <rate>` | Set bit error rate, for example `-b 1e-4`. |
-| `-t <seconds>` | Set runtime. |
-| `-n` | Disable log-file generation. |
-| `-d <mask>` | Enable debug output. |
-| `-p <port>` | Use a custom port when the default port is occupied. |
+| `a` / `b` | 启动站点 A 或 B。 |
+| `-u` | 使用无误码信道。 |
+| `-f` | 启用 flood 模式。 |
+| `-b <rate>` | 设置误码率，例如 `-b 1e-4`。 |
+| `-t <seconds>` | 设置运行时间。 |
+| `-n` | 不生成日志文件。 |
+| `-d <mask>` | 启用调试输出。 |
+| `-p <port>` | 默认端口被占用时指定其他端口。 |
 
-## Notes
+## 说明
 
-This repository intentionally keeps only source code, build files, and small reference executables needed for the lab. Experiment reports, score sheets, generated logs, and local build outputs are excluded.
+本仓库仅保留实验实现相关的源码、构建文件和少量参考可执行文件。实验报告、评分表、生成日志和本地编译产物不纳入版本管理。
